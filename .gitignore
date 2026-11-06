@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+.venv/
+
+# Generated data
+processed/
+dataset/
+reports/
+
+# Original documents
+source/
+*.pdf
