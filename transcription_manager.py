@@ -7,6 +7,7 @@ from docx import Document
 BASE_DIR = Path(__file__).resolve().parent
 
 SOURCE_DIR = BASE_DIR / "source" / "transcriptions"
+PDF_DIR = BASE_DIR / "source" / "pdf"
 OUTPUT_DIR = BASE_DIR / "processed" / "transcriptions"
 REGISTRY_PATH = OUTPUT_DIR.parent / "document_registry.json"
 
@@ -85,12 +86,19 @@ def extract_paragraphs(docx_path, document_id):
 def process_document(docx_path, document_id):
     docx_path = Path(docx_path)
 
+    pdf_filename = docx_path.stem.replace(
+        "文字檔", "掃描檔"
+    ) + ".pdf"
+
+    pdf_path = PDF_DIR / pdf_filename
+
     paragraphs = extract_paragraphs(docx_path, document_id)
 
     result = {
         "document_id": document_id,
         "document_name": docx_path.stem,
         "source_file": docx_path.name,
+        "pdf_file": pdf_filename if pdf_path.exists() else None,
         "paragraph_count": len(paragraphs),
         "paragraphs": paragraphs,
     }
