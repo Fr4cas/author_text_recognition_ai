@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+
 from docx import Document
 
 
@@ -7,6 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 SOURCE_DIR = BASE_DIR / "source" / "transcriptions"
 OUTPUT_DIR = BASE_DIR / "processed" / "transcriptions"
+REGISTRY_PATH = OUTPUT_DIR.parent / "document_registry.json"
 
 
 def has_page_break(paragraph):
@@ -23,11 +25,43 @@ def has_page_break(paragraph):
     return False
 
 
-def extract_paragraphs(docx_path):
-    """Extract paragraphs while preserving their order and styles."""
+def load_document_registry(docx_files):
+    """Load existing document IDs and assign IDs to new DOCX files."""
+
+    if REGISTRY_PATH.exists():
+        with open(REGISTRY_PATH, "r", encoding="utf-8") as file:
+            registry = json.load(file)
+    else:
+        registry = {}
+
+    # Find the next available numeric ID without changing existing assignments.
+    existing_numbers = [
+        int(document_id[3:])
+        for document_id in registry.values()
+        if document_id.startswith("DOC") and document_id[3:].isdigit()
+    ]
+    next_number = max(existing_numbers, default=0) + 1
+
+    # Sorted input makes the initial assignment predictable.
+    for docx_path in sorted(docx_files):
+        filename = docx_path.name
+
+        if filename not in registry:
+            registry[filename] = f"DOC{next_number:03d}"
+            next_number += 1
+
+    REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(REGISTRY_PATH, "w", encoding="utf-8") as file:
+        json.dump(registry, file, ensure_ascii=False, indent=4)
+
+    return registry
+
+
+def extract_paragraphs(docx_path, document_id):
+    """Extract paragraphs while preserving their order and Word styles."""
 
     document = Document(docx_path)
-
     paragraphs = []
 
     for index, paragraph in enumerate(document.paragraphs, start=1):
@@ -37,25 +71,28 @@ def extract_paragraphs(docx_path):
             continue
 
         paragraphs.append({
+            "document_id": document_id,
             "paragraph_id": index,
             "text": text,
-            "style": paragraph.style.name,
-            "page_break_after": has_page_break(paragraph)
+            "word_style": paragraph.style.name,
+            "classification": "unclassified",
+            "page_break_after": has_page_break(paragraph),
         })
 
     return paragraphs
 
 
-def process_document(docx_path):
+def process_document(docx_path, document_id):
     docx_path = Path(docx_path)
 
-    paragraphs = extract_paragraphs(docx_path)
+    paragraphs = extract_paragraphs(docx_path, document_id)
 
     result = {
+        "document_id": document_id,
         "document_name": docx_path.stem,
         "source_file": docx_path.name,
         "paragraph_count": len(paragraphs),
-        "paragraphs": paragraphs
+        "paragraphs": paragraphs,
     }
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -67,10 +104,11 @@ def process_document(docx_path):
             result,
             file,
             ensure_ascii=False,
-            indent=4
+            indent=4,
         )
 
     print(f"Processed: {docx_path.name}")
+    print(f"Document ID: {document_id}")
     print(f"Paragraphs: {len(paragraphs)}")
     print(f"Output: {output_path}")
 
@@ -86,6 +124,8 @@ def main():
         print(f"No DOCX files found in: {SOURCE_DIR}")
         return
 
+    registry = load_document_registry(docx_files)
+
     print(f"Found {len(docx_files)} DOCX files.")
 
     successful = 0
@@ -93,7 +133,8 @@ def main():
 
     for docx_path in docx_files:
         try:
-            process_document(docx_path)
+            document_id = registry[docx_path.name]
+            process_document(docx_path, document_id)
             successful += 1
 
         except Exception as error:
@@ -106,6 +147,7 @@ def main():
     print(f"Documents found: {len(docx_files)}")
     print(f"Successful:      {successful}")
     print(f"Failed:          {failed}")
+    print(f"ID registry:     {REGISTRY_PATH}")
 
 
 if __name__ == "__main__":
